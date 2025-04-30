@@ -2,43 +2,43 @@ import numpy as np
 from environment import step_environment
 from utils import plot_trajectory
 
-def rollout(policy, initial_state, target, horizon=100):
-    """
-    Simulate one trajectory rollout.
-    
-    Args:
-        policy: policy object
-        initial_state: np.array, shape (2,)
-        target: np.array, shape (2,)
-        horizon: number of steps per episode
-        
-    Returns:
-        states: array of states over trajectory
-        actions: array of actions over trajectory
-        rewards: array of rewards over trajectory
-    """
+def violates_constraint(state, center, radius):
+    return np.linalg.norm(state - center) < radius
+
+def rollout_episode(policy, initial_state, target, horizon=50,
+                    obstacle_center=np.array([0.5, 0.5]),
+                    obstacle_radius=0.2,
+                    constraint_penalty=-5.0):
     state = initial_state
     states, actions, rewards = [], [], []
-    
+
+    violations = 0
+
     for _ in range(horizon):
         action, _ = policy.act(state)
         next_state = step_environment(state, action)
-        
-        distance = np.linalg.norm(next_state - target)
-        reward = -distance  # negative distance
 
-        if distance < 0.1:
-            reward += 10  # bonus for reaching close to target
-        
+        # Reward is negative distance to target (as before)
+        reward = -np.linalg.norm(next_state - target) ** 2
+
+        # Apply constraint penalty
+        if violates_constraint(next_state, obstacle_center, obstacle_radius):
+            reward += constraint_penalty
+            violations += 1
+
+        # Store
         states.append(state)
         actions.append(action)
         rewards.append(reward)
-        
         state = next_state
 
-    return np.array(states), np.array(actions), np.array(rewards)
+    return np.array(states), np.array(actions), np.array(rewards), state, violations
 
-def compute_returns(rewards, gamma=0.99):
+
+
+
+
+def compute_reward_to_go(rewards, gamma=0.99):
     """
     Compute discounted returns (reward-to-go).
     """
@@ -56,24 +56,31 @@ def train_policy(policy, num_episodes=1000, horizon=50):
     target = np.array([0.0, 0.0])  # Target location
     reward_history = []
 
+    episode_returns = []
+    final_dists = []
+
+    best_dist = float('inf')
+    best_trajectory = None
+
     for episode in range(num_episodes):
-        initial_state = np.random.randn(2)  # Start from random position
-        states, actions, rewards = rollout(policy, initial_state, target, horizon)
+        initial_state = np.random.randn(2)
+        states, actions, rewards, final_state, violations = rollout_episode(policy, initial_state, target, horizon)
         
-        returns = compute_returns(rewards)
-
-        # Normalize advantages
-        advantages = (returns - np.mean(returns)) / (np.std(returns) + 1e-8)
-
-        # Policy update
+        advantages = compute_reward_to_go(rewards)
+        advantages = (advantages - np.mean(advantages)) / (np.std(advantages) + 1e-8)
         policy.update(states, actions, advantages)
 
         total_reward = np.sum(rewards)
-        reward_history.append(total_reward)
+        final_dist = np.linalg.norm(final_state - target)
 
-        # Optional: plot trajectory every N episodes
-        if episode % 50 == 0:
-            plot_trajectory(states, target)
-            print(f"Episode {episode}, Total Reward: {total_reward:.2f}")
+        episode_returns.append(total_reward)
+        final_dists.append(final_dist)
 
-    return reward_history
+        if final_dist < best_dist:
+            best_dist = final_dist
+            best_trajectory = (states, actions)
+
+        if episode % 10 == 0:
+            print(f"Episode {episode}: Total Reward {total_reward:.2f}, Final Dist {final_dist:.2f}, Violations: {violations}")
+
+    return episode_returns, final_dists, best_trajectory

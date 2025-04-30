@@ -3,25 +3,40 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 
-def plot_trajectory(states, target):
+def plot_trajectory(traj, start, target, title="Best Episode Trajectory",
+                    obstacle_center=None, obstacle_radius=None, save_path=None):
     """
-    Plot a 2D trajectory towards a target.
-    
-    Args:
-        states: np.array of shape (T, 2)
-        target: np.array of shape (2,)
+    Plots the trajectory of an agent given a sequence of states.
+
+    Parameters:
+        traj (ndarray): Array of shape (T, 2) with agent positions over time
+        start (ndarray): Initial position (2D)
+        target (ndarray): Target position (2D)
+        obstacle_center (ndarray): Center of the circular constraint region
+        obstacle_radius (float): Radius of the constraint region
+        title (str): Plot title
+        save_path (str): Optional path to save the figure
     """
-    plt.figure(figsize=(6,6))
-    plt.plot(states[:,0], states[:,1], marker='o', label='Trajectory')
-    plt.scatter(states[0,0], states[0,1], color='green', s=100, label='Start')
+    plt.figure(figsize=(6, 6))
+    plt.plot(traj[:, 0], traj[:, 1], marker='o', markersize=2, label='Trajectory')
+    plt.scatter(start[0], start[1], color='green', s=100, label='Start')
     plt.scatter(target[0], target[1], color='red', s=100, label='Target')
-    plt.title('Agent Trajectory')
+
+    # Draw constraint violation region
+    if obstacle_center is not None and obstacle_radius is not None:
+        circle = Circle(obstacle_center, obstacle_radius, color='gray', alpha=0.3, label='Constraint Region')
+        plt.gca().add_patch(circle)
+
+    plt.title(title)
     plt.xlabel('x')
     plt.ylabel('y')
-    plt.legend()
     plt.grid(True)
-    plt.axis('equal')
+    plt.legend()
+    if save_path:
+        plt.savefig(save_path, dpi=300)
     plt.show()
+
+
 
 def plot_rewards(rewards):
     plt.figure(figsize=(8,5))
