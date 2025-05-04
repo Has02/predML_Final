@@ -15,7 +15,7 @@ class StochasticPolicyNetwork:
         action = mean_action + np.random.normal(0, self.noise_std, size=mean_action.shape)
         return action, mean_action
 
-    def update(self, states, actions, advantages):
+    def update(self, states, actions, advantages, weight=1.0):
         for state, action, advantage in zip(states, actions, advantages):
             h = np.maximum(0, self.W1 @ state + self.b1)  # ReLU
             mean_action = self.W2 @ h + self.b2
@@ -38,5 +38,32 @@ class StochasticPolicyNetwork:
             self.b1 += self.lr * advantage * grad_b1
 
         # Regularize
+        self.W1 *= 0.99
+        self.W2 *= 0.99
+    
+    def updateDPO(self, states, actions, advantages, weight=1.0):
+        for state, action, advantage in zip(states, actions, advantages):
+            h = np.maximum(0, self.W1 @ state + self.b1)  # ReLU
+            mean_action = self.W2 @ h + self.b2
+            grad_logp = (action - mean_action) / (self.noise_std ** 2)
+            grad_logp = np.clip(grad_logp, -5.0, 5.0)
+
+            # Gradients for W2, b2
+            grad_W2 = np.outer(grad_logp, h)
+            grad_b2 = grad_logp
+
+            # Gradients for W1, b1 (through ReLU)
+            dh = (self.W2.T @ grad_logp) * (h > 0)
+            grad_W1 = np.outer(dh, state)
+            grad_b1 = dh
+
+            # Apply update with DPO weight scaling
+            scale = self.lr * advantage * weight
+            self.W2 += scale * grad_W2
+            self.b2 += scale * grad_b2
+            self.W1 += scale * grad_W1
+            self.b1 += scale * grad_b1
+
+        # Regularization
         self.W1 *= 0.99
         self.W2 *= 0.99
